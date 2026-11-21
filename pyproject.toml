@@ -1,0 +1,28 @@
+[project]
+name = "minimal-agent-loop"
+version = "0.1.0"
+description = "A minimal ReAct agent loop in Python"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["agent", "react", "llm", "python"]
+# 零运行时依赖：网络用标准库 urllib，正是"不依赖任何 SDK"的教学意图
+dependencies = []
+
+[project.scripts]
+# 安装后可用 minimal-agent-loop 命令启动 CLI
+minimal-agent-loop = "minimal_agent_loop.cli:main"
+
+[project.optional-dependencies]
+dev = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/minimal_agent_loop"]
+
+[tool.pytest.ini_options]
+# 若安装了 pytest 也可用它跑；本项目自带 unittest 入口
+testpaths = ["tests"]
