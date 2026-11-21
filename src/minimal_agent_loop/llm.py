@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import os
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .types import ChatMessage, LLMConfig, ToolSchema
@@ -62,7 +62,15 @@ def chat(
         with urlopen(req, timeout=TIMEOUT_SECONDS) as res:
             data = json.loads(res.read().decode("utf-8"))
     except HTTPError as e:
+        # 服务端有响应但拒绝了：key 无效、模型名写错、余额不足等，把响应体带出来
         raise RuntimeError(f"LLM 请求失败 {e.code}: {e.read().decode('utf-8', 'replace')}") from e
+    except URLError as e:
+        # 连不上服务：Ollama 没启动、BASE_URL 写错、断网等。
+        # 注意 HTTPError 是 URLError 的子类，必须先捕具体的 HTTPError，
+        # 否则上面带响应体的报错会被这个分支吞掉。
+        raise RuntimeError(
+            f"无法连接 {config['base_url']}，请检查服务是否已启动、地址是否正确（{e.reason}）"
+        ) from e
 
     # 教学简化：直接断言返回结构。生产代码应做运行时校验（如 pydantic），
     # 否则服务返回异常结构时只会在更远处报错，难以定位。

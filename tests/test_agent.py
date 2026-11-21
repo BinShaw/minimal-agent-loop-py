@@ -1,5 +1,6 @@
 """离线冒烟测试：用脚本化的假 chat 函数验证 ReAct 循环逻辑
-（多轮工具调用、历史累积、错误观察、正常终止）。运行: uv run unittest
+（多轮工具调用、历史累积、错误观察、正常终止）。
+运行: uv run python -m unittest discover -s tests -t .
 
 关键手法：Agent 构造器的第三个参数可以替换"问模型"这件事，
 所以不需要 API key 就能测试整个循环。
@@ -9,10 +10,16 @@ from __future__ import annotations
 import copy
 import json
 import unittest
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from minimal_agent_loop.agent import Agent, AgentOptions, AgentStep
-from minimal_agent_loop.tools import Tool, ToolDefinition, define_tool
+from minimal_agent_loop.tools import (
+    Tool,
+    ToolDefinition,
+    create_default_tools,
+    define_tool,
+)
 from minimal_agent_loop.types import ChatMessage, LLMConfig, ToolCall
 
 FAKE_CONFIG: LLMConfig = {"base_url": "http://fake", "api_key": "fake", "model": "fake"}
@@ -205,6 +212,41 @@ class BadRequestsTest(unittest.TestCase):
         self.assertIn("不是合法 JSON", steps[0].results["c2"])
         # 同一轮里每个失败的调用都各自得到观察值，互不影响
         self.assertEqual(len(steps[0].results), 2)
+
+
+class DefineToolFactoryTest(unittest.TestCase):
+    def test_schema_name_matches_routing_key(self):
+        """define_tool 的核心承诺：schema 里的 function.name 与本地路由 key
+        是同一个名字——模型按 schema 请求的工具，Agent 一定能路由到"""
+        tool = make_tool("calc")
+        self.assertEqual(tool.schema["function"]["name"], tool.name)
+
+
+class CalculateGuardrailsTest(unittest.TestCase):
+    """内置 calculate 的白名单边界：模型传什么都够不到 Python 本身的能力"""
+
+    def setUp(self):
+        # calculate 是 create_default_tools 内部的局部函数，取它的 handler 来测
+        self.calculate = next(
+            t.handler for t in create_default_tools() if t.name == "calculate"
+        )
+
+    def test_normal_expression(self):
+        """正常算式照常求值"""
+        self.assertEqual(self.calculate({"expression": "2 + 3 * 4"}), 14)
+        self.assertEqual(self.calculate({"expression": "1.5 * 2"}), 3.0)
+
+    def test_rejects_identifiers_and_tuples(self):
+        """字母与逗号一律拒绝：没有字母拼不出标识符，没有逗号拼不出元组"""
+        for expr in ["__import__('os')", "open('x')", "1 if 2 else 3", "(1, 2)"]:
+            with self.assertRaisesRegex(ValueError, "非法字符"):
+                self.calculate({"expression": expr})
+
+    def test_rejects_power_and_floordiv(self):
+        """单字符白名单挡不住组合：** 能让 9**9**9 在 eval 阶段耗尽内存，显式拒绝"""
+        for expr in ["2**10", "9 ** 9 ** 9", "7 // 2"]:
+            with self.assertRaisesRegex(ValueError, "不支持"):
+                self.calculate({"expression": expr})
 
 
 if __name__ == "__main__":

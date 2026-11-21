@@ -15,12 +15,14 @@ YELLOW = "\x1b[33m"
 DIM = "\x1b[2m"
 RESET = "\x1b[0m"
 
-# Windows 旧终端（如 cmd）默认不识别 ANSI 转义，先尝试启用
+# Windows 旧终端（如 cmd）默认不识别 ANSI 颜色转义，先尝试启用
 if sys.platform == "win32":
     try:
         import ctypes
 
         kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        # -11 = STD_OUTPUT_HANDLE；模式 7 = 1|2|4，其中第 4 位
+        # ENABLE_VIRTUAL_TERMINAL_PROCESSING 才是让终端解析 \x1b[.. 颜色转义的关键
         kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
     except Exception:  # noqa: BLE001
         pass
@@ -52,7 +54,7 @@ def main() -> int:
     agent = Agent(config, create_default_tools())
 
     print(f"{CYAN}minimal-agent-loop{RESET}  model={config['model']}  baseUrl={config['base_url']}")
-    print(f"{DIM}输入问题开始对话，Ctrl+C 退出。{RESET}\n")
+    print(f"{DIM}输入问题开始对话，输入 exit 或 Ctrl+C 退出。{RESET}\n")
 
     try:
         while True:

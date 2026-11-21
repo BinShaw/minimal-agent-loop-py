@@ -12,14 +12,14 @@ from dataclasses import dataclass
 from typing import Callable
 
 from .llm import chat
-from .types import ChatMessage, LLMConfig, ToolCall
+from .types import ChatMessage, LLMConfig, ToolCall, ToolSchema
 from .tools import Tool
 
 MAX_STEPS_DEFAULT = 10
 
 # "问模型"这件事的签名——Agent 只依赖它，不依赖具体网络实现，
 # 测试时替换成一个假函数即可离线跑通整个循环（见 tests/test_agent.py）。
-ChatFn = Callable[[list[ChatMessage], list, LLMConfig], ChatMessage]
+ChatFn = Callable[[list[ChatMessage], list[ToolSchema], LLMConfig], ChatMessage]
 
 
 @dataclass

@@ -5,14 +5,12 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, Mapping
+from typing import Any
 
-from .types import FunctionSchema, ToolHandler, ToolSchema
-
-# 工具执行函数：接收参数 Mapping，返回任意结果（Agent 会把它字符串化）
-ToolFunc = Callable[[Mapping[str, Any]], Any]
+from .types import FunctionSchema, ToolFunc, ToolSchema
 
 
 @dataclass(frozen=True)
@@ -26,7 +24,7 @@ class Tool:
 
     name: str
     schema: ToolSchema
-    handler: ToolHandler
+    handler: ToolFunc
 
 
 @dataclass
@@ -65,8 +63,13 @@ def create_default_tools() -> list[Tool]:
         expression = str(args.get("expression", "")).strip()
         # 白名单只放行数学字符。禁掉字母是安全的关键：没有字母就拼不出任何
         # 标识符（__import__、os、open 等），表达式便够不到 Python 本身的能力。
-        if not re.fullmatch(r"[-+*/%().,\d\s]+", expression):
-            raise ValueError("表达式含非法字符，只支持数字和 + - * / % ( )")
+        # 逗号也不放行：无字母的算式里，逗号唯一能拼出的是元组 (1,2)，没有正当用途
+        if not re.fullmatch(r"[-+*/%().\d\s]+", expression):
+            raise ValueError("表达式含非法字符，只支持数字、小数点和 + - * / % ( )")
+        # 单字符白名单挡不住字符的「组合」：* 和 * 拼出 ** 后，9**9**9 会在
+        # eval 阶段就耗尽 CPU/内存（轮不到下面的类型检查），// 同理，显式拒绝。
+        if "**" in expression or "//" in expression:
+            raise ValueError("不支持 ** 和 //（防止超大数运算卡死进程）")
         # 教学简化：真实项目请改用表达式解析器（如 sympy / ast 安全求值）。
         # 这里为了零依赖采用「白名单 + eval」，绝不能套用到未过滤的输入上。
         # 字符集只含数字、运算符和括号，eval 的结果必然是数值。

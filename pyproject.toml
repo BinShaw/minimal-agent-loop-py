@@ -13,9 +13,6 @@ dependencies = []
 # 安装后可用 minimal-agent-loop 命令启动 CLI
 minimal-agent-loop = "minimal_agent_loop.cli:main"
 
-[project.optional-dependencies]
-dev = []
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

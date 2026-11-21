@@ -4,7 +4,7 @@
 零第三方依赖、无 SDK —— 网络请求用标准库 `urllib`，核心逻辑约 100 行，
 适合用来理解 agent 的底层工作原理。
 
-> TypeScript 原版见 [minimal-agent-loop](../minimal-agent-loop)。
+> TypeScript 版见 [minimal-agent-loop](https://github.com/BinShaw/minimal-agent-loop)。
 
 ## ReAct 循环
 
@@ -27,16 +27,30 @@
 ## 快速开始
 
 需要 Python ≥ 3.10（用了 `X | Y` 类型标注）。推荐用 [uv](https://docs.astral.sh/uv/) 运行，
-不需要预装任何第三方包：
+无需预装任何第三方包——uv 会把本项目装进隔离的 `.venv`（首次运行需联网，之后离线可用）：
 
 ```bash
-uv run --python 3.12 --no-project python -m minimal_agent_loop.cli
+uv run python -m minimal_agent_loop.cli
 ```
 
-或者用系统 Python，把 `src` 加进模块路径：
+为什么必须经过一步"安装"？本项目是 `src/` 布局，Python 默认不会从 `src/` 找模块，
+`uv run` 的这步安装正是 src 布局的推荐用法。想跳过安装，也可以直接把 `src` 指给
+模块路径——注意该写法因 shell 而异，三种 shell 的写法：
 
 ```bash
+# bash / zsh（macOS、Linux、Git Bash）
 PYTHONPATH=src python -m minimal_agent_loop.cli
+```
+
+```powershell
+# PowerShell（Windows）
+$env:PYTHONPATH = "src"; python -m minimal_agent_loop.cli
+```
+
+```cmd
+:: cmd（Windows）
+set PYTHONPATH=src
+python -m minimal_agent_loop.cli
 ```
 
 运行前需要设置环境变量，任选一种 OpenAI 兼容服务：
@@ -44,8 +58,9 @@ PYTHONPATH=src python -m minimal_agent_loop.cli
 | 服务 | `OPENAI_BASE_URL` | `MODEL` | `OPENAI_API_KEY` |
 |---|---|---|---|
 | OpenAI（默认） | 可不设 | 可不设 | `sk-...` |
-| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` | 你的 key |
-| 本地 Ollama | `http://localhost:11434/v1` | `qwen2.5` 等 | 任意非空值，如 `ollama` |
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-flash` | 你的 key |
+| 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-5.3` 等 | 你的 key |
+| 本地 Ollama | `http://localhost:11434/v1` | `qwen3.8` 等 | 任意非空值，如 `ollama` |
 
 以 DeepSeek 为例，三种 shell 的写法：
 
@@ -53,21 +68,21 @@ PYTHONPATH=src python -m minimal_agent_loop.cli
 # bash / zsh（macOS、Linux、Git Bash）
 export OPENAI_BASE_URL=https://api.deepseek.com/v1
 export OPENAI_API_KEY=sk-...
-export MODEL=deepseek-chat
+export MODEL=deepseek-flash
 ```
 
 ```powershell
 # PowerShell（Windows）
 $env:OPENAI_BASE_URL = "https://api.deepseek.com/v1"
 $env:OPENAI_API_KEY = "sk-..."
-$env:MODEL = "deepseek-chat"
+$env:MODEL = "deepseek-flash"
 ```
 
 ```cmd
 :: cmd（Windows）
 set OPENAI_BASE_URL=https://api.deepseek.com/v1
 set OPENAI_API_KEY=sk-...
-set MODEL=deepseek-chat
+set MODEL=deepseek-flash
 ```
 
 ## 一次对话长什么样
@@ -114,7 +129,7 @@ set MODEL=deepseek-chat
 
 ## 内置工具与添加自己的工具
 
-- `calculate` — 数学表达式求值（输入做了字符白名单校验）
+- `calculate` — 数学表达式求值（字符白名单校验 + 显式拒绝 `**` / `//`，见「关于安全约束」）
 - `get_current_time` — 返回当前时间
 
 用 `define_tool` 添加工具，只需关心名字、说明、参数和执行逻辑：
@@ -144,7 +159,8 @@ agent = Agent(load_config(), [*create_default_tools(), weather])
 
 工具是模型触达真实世界的通道，所以每个工具都该先想“模型可能传什么怪东西进来”：
 
-- `calculate` 用字符白名单过滤表达式，**禁掉字母是关键**——没有字母就拼不出 `__import__`、`os`、`open` 之类的标识符，表达式够不到 Python 本身的能力；
+- `calculate` 用字符白名单过滤表达式，**禁掉字母是关键**——没有字母就拼不出 `__import__`、`os`、`open` 之类的标识符，表达式够不到 Python 本身的能力；逗号同样禁掉，免得拼出 `(1,2)` 这样的元组；
+- 白名单是**单字符**级的，挡不住字符的组合：`*` 和 `*` 拼出 `**` 后，`9**9**9` 会在 `eval` 阶段就耗尽 CPU / 内存（轮不到后面的类型检查兜底），所以又显式拒绝了 `**` 和 `//`；
 - 真实项目请用表达式解析器（如 sympy / `ast` 安全求值）代替 `eval`，这里只是为了零依赖；
 - 如果哪天想加 shell 类工具，同样思路是命令白名单，例如只放行 `^npm (test|run test)( |$)` 这类固定前缀，而不是把模型给的字符串直接丢进 `subprocess`。
 
@@ -153,10 +169,10 @@ agent = Agent(load_config(), [*create_default_tools(), weather])
 ## 测试
 
 ```bash
-uv run --offline --python 3.12 --no-project python -m unittest discover -s tests -t .
+uv run python -m unittest discover -s tests -t .
 ```
 
-（或 `PYTHONPATH=src python -m unittest discover -s tests -t .`）
+（或 `PYTHONPATH=src python -m unittest discover -s tests -t .`；测试是离线的，不需要 API key）
 
 覆盖：
 
@@ -164,7 +180,9 @@ uv run --offline --python 3.12 --no-project python -m unittest discover -s tests
 - **对话历史如何逐轮累积**（`assistant` 的 `tool_calls` 与 `tool` 消息靠 `tool_call_id` 配对）；
 - 工具抛错 → 错误文本作为观察值回喂，模型仍能收尾；
 - 达到 `max_steps` 上限抛错；
-- 未知工具名、非法 JSON 参数各自得到错误观察值，互不影响。
+- 未知工具名、非法 JSON 参数各自得到错误观察值，互不影响；
+- `define_tool` 保证 schema 里的函数名与本地路由 key 一致（工厂的全部意义所在）；
+- `calculate` 白名单边界：标识符、元组被拦，`**` / `//` 被显式拒绝。
 
 ## 代码内使用
 
